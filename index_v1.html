@@ -1,0 +1,28 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Dev IA</title>
+<style>
+body{margin:0;font:15px system-ui;background:#111;color:#eee;display:flex;height:100vh}
+#side{width:260px;background:#181818;padding:12px;overflow:auto;border-right:1px solid #333}
+#main{flex:1;display:flex;flex-direction:column}
+#log{flex:1;overflow:auto;padding:16px}
+.m{margin:0 0 12px;padding:10px 12px;border-radius:8px;white-space:pre-wrap;font-family:Consolas,monospace;font-size:13px}
+.user{background:#2a3a5a}.assistant{background:#1e1e1e}.tool{background:#1a2b1a;color:#9d9}.error{background:#5a2a2a}
+#bar{display:flex;gap:8px;padding:12px;border-top:1px solid #333}
+textarea{flex:1;background:#1b1b1b;color:#eee;border:1px solid #444;border-radius:8px;padding:8px;height:60px}
+button{background:#2a9d5c;border:0;color:#fff;border-radius:8px;padding:0 16px;cursor:pointer}
+</style></head><body>
+<div id="side"><b id="model"></b><p>Archivos del workspace:</p><pre id="files"></pre>
+<button onclick="reset()" style="padding:6px 10px">Nueva conversacion</button></div>
+<div id="main"><div id="log"></div>
+<div id="bar"><textarea id="q" placeholder="Pidele lo que quieras programar..."></textarea>
+<button id="go" onclick="send()">Enviar</button></div></div>
+<script>
+const log=document.getElementById('log'),q=document.getElementById('q');
+function add(role,text){const d=document.createElement('div');d.className='m '+role;d.textContent=text;log.appendChild(d);log.scrollTop=log.scrollHeight;}
+async function refresh(){const r=await (await fetch('/api/files')).json();document.getElementById('model').textContent='Modelo: '+r.model;document.getElementById('files').textContent=r.files.join('\n');}
+async function send(){const m=q.value.trim();if(!m)return;q.value='';add('user',m);const b=document.getElementById('go');b.disabled=true;b.textContent='Trabajando...';
+try{const r=await (await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session:'default',message:m})})).json();r.log.forEach(x=>add(x.role,x.content));}catch(e){add('error',String(e));}
+b.disabled=false;b.textContent='Enviar';refresh();}
+async function reset(){await fetch('/api/reset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session:'default'})});log.innerHTML='';}
+q.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}});
+refresh();
+</script></body></html>

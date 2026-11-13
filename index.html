@@ -1,0 +1,56 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Dev IA</title>
+<style>
+body{margin:0;font:15px system-ui;background:#111;color:#eee;display:flex;height:100vh}
+#side{width:270px;background:#181818;padding:12px;overflow:auto;border-right:1px solid #333}
+#main{flex:1;display:flex;flex-direction:column;min-width:0}
+#log{flex:1;overflow:auto;padding:16px}
+.m{margin:0 0 12px;padding:10px 12px;border-radius:8px;white-space:pre-wrap;font-family:Consolas,monospace;font-size:13px}
+.lbl{color:#888;font-size:12px;margin:0 0 4px}
+.user{background:#2a3a5a}.assistant{background:#1e1e1e}.tool{background:#1a2b1a;color:#9d9}.error{background:#5a2a2a}
+#bar{display:flex;gap:8px;padding:12px;border-top:1px solid #333}
+textarea{flex:1;background:#1b1b1b;color:#eee;border:1px solid #444;border-radius:8px;padding:8px;height:60px}
+button{background:#2a9d5c;border:0;color:#fff;border-radius:8px;padding:0 16px;cursor:pointer}
+select{width:100%;background:#222;color:#eee;border:1px solid #444;border-radius:6px;padding:6px;margin:6px 0 12px}
+small{color:#999}
+</style></head><body>
+<div id="side"><b>Dev IA</b>
+<p><small id="roles"></small></p>
+<label>Modo</label>
+<select id="mode"><option value="rapido">Rapido (solo programador)</option><option value="calidad">Calidad (plan + codigo + revision)</option></select>
+<p>Archivos del workspace:</p><pre id="files"></pre>
+<button onclick="reset()" style="padding:6px 10px">Nueva conversacion</button></div>
+<div id="main"><div id="log"></div>
+<div id="bar"><textarea id="q" placeholder="Pidele lo que quieras programar..."></textarea>
+<button id="go" onclick="send()">Enviar</button>
+<button id="stopb" onclick="stop()" style="display:none;background:#b33">Detener</button></div></div>
+<script>
+const log=document.getElementById('log'),q=document.getElementById('q'),go=document.getElementById('go'),stopb=document.getElementById('stopb');
+let ctrl=null,cur=null;
+function add(role,text){const d=document.createElement('div');d.className='m '+role;d.textContent=text||'';log.appendChild(d);log.scrollTop=log.scrollHeight;return d;}
+function label(t){const d=document.createElement('div');d.className='lbl';d.textContent=t;log.appendChild(d);}
+function busy(b){go.disabled=b;go.textContent=b?'Trabajando...':'Enviar';stopb.style.display=b?'':'none';}
+async function refresh(){try{const r=await (await fetch('/api/files')).json();
+document.getElementById('roles').textContent='Programador: '+r.roles.coder+' | Planificador: '+r.roles.planner+' | Revisor: '+r.roles.reviewer;
+document.getElementById('files').textContent=r.files.join('\n');}catch(e){}}
+function handle(e){
+if(e.t==='start'){label(e.v);cur=add('assistant','');}
+else if(e.t==='tok'){if(!cur)cur=add('assistant','');cur.textContent+=e.v;log.scrollTop=log.scrollHeight;}
+else if(e.t==='tool'){add('tool',e.v);cur=null;}
+else if(e.t==='status'){add('tool',e.v);}
+else if(e.t==='error'){add('error',e.v);}
+}
+async function send(){
+const m=q.value.trim();if(!m||ctrl)return;q.value='';add('user',m);cur=null;
+ctrl=new AbortController();busy(true);
+try{
+const r=await fetch('/api/chat',{method:'POST',signal:ctrl.signal,headers:{'Content-Type':'application/json'},body:JSON.stringify({session:'default',message:m,mode:document.getElementById('mode').value})});
+const rd=r.body.getReader(),dec=new TextDecoder();let buf='';
+while(true){const {value,done}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});
+let i;while((i=buf.indexOf('\n'))>=0){const line=buf.slice(0,i);buf=buf.slice(i+1);if(line.trim())handle(JSON.parse(line));}}
+}catch(e){if(e.name!=='AbortError')add('error',String(e));}
+ctrl=null;busy(false);refresh();}
+function stop(){if(ctrl)ctrl.abort();}
+async function reset(){await fetch('/api/reset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session:'default'})});log.innerHTML='';}
+q.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}});
+refresh();
+</script></body></html>
